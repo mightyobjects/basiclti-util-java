@@ -16,7 +16,6 @@
 
 package org.imsglobal.lti2.objects.provider;
 
-import org.codehaus.jackson.JsonNode;
 import org.imsglobal.lti2.objects.BaseJsonLd;
 
 /**

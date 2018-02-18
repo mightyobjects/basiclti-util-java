@@ -1,13 +1,12 @@
 package org.imsglobal.lti2.objects.consumer;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import org.imsglobal.lti2.LTI2Config;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Collections;
 
-import org.codehaus.jackson.annotate.JsonProperty;
-import org.codehaus.jackson.annotate.JsonPropertyOrder;
 import org.imsglobal.lti2.objects.BaseJson;
 
 @JsonPropertyOrder({
@@ -15,21 +14,13 @@ import org.imsglobal.lti2.objects.BaseJson;
     "@type",
     "@id"
 })
-@com.fasterxml.jackson.annotation.JsonPropertyOrder({
-    "@context",
-    "@type",
-    "@id"
-})
 public class ToolConsumer extends BaseJson {
 
     @JsonProperty("@context")
-    @com.fasterxml.jackson.annotation.JsonProperty("@context")
     private Object _context;
     @JsonProperty("@type")
-    @com.fasterxml.jackson.annotation.JsonProperty("@type")
     private String _type;
     @JsonProperty("@id")
-    @com.fasterxml.jackson.annotation.JsonProperty("@id")
     private String _id;
     private String lti_version;
     private String guid;

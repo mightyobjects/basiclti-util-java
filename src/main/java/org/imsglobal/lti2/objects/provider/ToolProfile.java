@@ -16,8 +16,6 @@
 package org.imsglobal.lti2.objects.provider;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import java.util.List;
-import java.util.Map;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.imsglobal.lti2.objects.consumer.ProductInstance;
@@ -29,7 +27,6 @@ import org.imsglobal.lti2.objects.consumer.ProductInstance;
 public class ToolProfile {
 
     @JsonProperty("@id")
-    @org.codehaus.jackson.annotate.JsonProperty("@id")
     private String id;
     private String lti_version;
     private JsonNode base_url_choice;
