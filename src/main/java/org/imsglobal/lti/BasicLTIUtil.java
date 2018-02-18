@@ -18,6 +18,19 @@
  */
 package org.imsglobal.lti;
 
+import com.mastfrog.acteur.HttpEvent;
+import static com.mastfrog.acteur.headers.Headers.X_FORWARDED_PROTO;
+import com.mastfrog.acteur.headers.Method;
+import com.mastfrog.acteur.server.PathFactory;
+import com.mastfrog.acteur.util.HttpMethod;
+import com.mastfrog.url.URL;
+import static com.mastfrog.util.Checks.notNull;
+import com.mastfrog.util.Exceptions;
+import com.mastfrog.util.Strings;
+import io.netty.buffer.ByteBufInputStream;
+import io.netty.handler.codec.http.HttpHeaderNames;
+import static io.netty.handler.codec.http.HttpHeaders.Names.HOST;
+import java.io.ByteArrayInputStream;
 import static org.imsglobal.lti.BasicLTIConstants.CUSTOM_PREFIX;
 import static org.imsglobal.lti.BasicLTIConstants.EXTENSION_PREFIX;
 import static org.imsglobal.lti.BasicLTIConstants.LTI_MESSAGE_TYPE;
@@ -30,7 +43,10 @@ import static org.imsglobal.lti.BasicLTIConstants.TOOL_CONSUMER_INSTANCE_NAME;
 import static org.imsglobal.lti.BasicLTIConstants.TOOL_CONSUMER_INSTANCE_URL;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
 import java.net.URISyntaxException;
+import java.net.URLDecoder;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,14 +57,11 @@ import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import javax.servlet.http.HttpServletRequest;
-
 import net.oauth.OAuthAccessor;
 import net.oauth.OAuthConsumer;
 import net.oauth.OAuthMessage;
 import net.oauth.OAuthValidator;
 import net.oauth.SimpleOAuthValidator;
-import net.oauth.server.OAuthServlet;
 import net.oauth.signature.OAuthSignatureMethod;
 import org.apache.commons.lang3.StringUtils;
 import org.imsglobal.lti.launch.LtiError;
@@ -118,8 +131,114 @@ public class BasicLTIUtil {
         M_log.fine(str);
     }
 
-    public static LtiVerificationResult validateMessage(HttpServletRequest request, String URL, String oauth_secret) {
-        OAuthMessage oam = OAuthServlet.getMessage(request, URL);
+    private static CharSequence[] splitOnce(char c, CharSequence cs) {
+        int max = cs.length();
+        int splitAt = -1;
+        for (int i = 0; i < cs.length(); i++) {
+            if (c == cs.charAt(i)) {
+                splitAt = i;
+                break;
+            }
+        }
+        if (splitAt == -1) {
+            return new CharSequence[]{cs};
+        }
+        CharSequence left = cs.subSequence(0, splitAt);
+        if (splitAt < max - 1) {
+            CharSequence right = cs.subSequence(splitAt + 1, max);
+            return new CharSequence[]{left, right};
+        }
+        return new CharSequence[]{left};
+    }
+
+    private static final CharSequence stripQuotes(CharSequence cs) {
+        if (cs.length() >= 2) {
+            if (cs.charAt(0) == '"') {
+                cs = cs.subSequence(1, cs.length());
+            }
+            if (cs.charAt(cs.length() - 1) == '"') {
+                cs = cs.subSequence(0, cs.length() - 1);
+            }
+        }
+        return cs;
+    }
+
+    private static Map<String, String> parameters(HttpEvent evt) {
+        Map<String, String> m = new HashMap<>(evt.urlParametersAsMap());
+        String header = evt.header(HttpHeaderNames.AUTHORIZATION);
+        if (header != null) {
+            try {
+                header = URLDecoder.decode(header, "UTF-8");
+            } catch (UnsupportedEncodingException ex) {
+                return Exceptions.chuck(ex);
+            }
+            if (header.toLowerCase().startsWith("oauth ")) {
+                header = header.substring(6);
+            }
+            for (CharSequence sq : Strings.splitUniqueNoEmpty(',', header)) {
+                CharSequence[] kv = splitOnce('=', sq);
+                if (kv.length == 2) {
+                    m.put(kv[0].toString(), stripQuotes(kv[1]).toString());
+                }
+            }
+        }
+        return m;
+    }
+
+    public static OAuthMessage getMessage(HttpEvent request, String URL) {
+        notNull("request", request);
+        if (URL == null) {
+            URL = request.request().uri();
+        }
+        int q = URL.indexOf('?');
+        if (q >= 0) {
+            URL = URL.substring(0, q);
+            // The query string parameters will be included in
+            // the result from getParameters(request).
+        }
+        try {
+            InputStream in = request.method() == Method.GET || request.content() == null
+                    || request.content().readableBytes() == 0 ? new ByteArrayInputStream(new byte[0])
+                    : new ByteBufInputStream(request.content());
+
+            HttpMethod mth = request.method();
+            if (mth == null) {
+                throw new IllegalArgumentException("Null request method in " + request);
+            }
+            return new OAuthMessage(mth.toString(), URL, parameters(request).entrySet(),
+                    in);
+        } catch (Exception ex) {
+            return Exceptions.chuck(ex);
+        }
+    }
+
+    public static String getRequestURL(HttpEvent evt, PathFactory paths) {
+        String uri = evt.request().uri();
+        if (uri.startsWith("http://") || uri.startsWith("https://")) {
+            return uri;
+        }
+        CharSequence proto = evt.header(X_FORWARDED_PROTO);
+        URL u1 = null;
+        if (proto == null) {
+            u1 = paths.constructURL("/");
+            proto = u1.getProtocol().toString();
+        }
+        CharSequence host = evt.header(HOST);
+        if (host == null) {
+            if (u1 == null) {
+                u1 = paths.constructURL("/");
+            }
+            host = paths.constructURL("/").getHost().toString();
+            if (!u1.getPort().equals(u1.getProtocol().getDefaultPort())) {
+                host = host + ":" + u1.getPort().intValue();
+            }
+        }
+        return proto + "://" + host + "/" + evt.request().uri();
+    }
+
+
+    public static LtiVerificationResult validateMessage(HttpEvent request, String URL, String oauth_secret) {
+        OAuthMessage oam = getMessage(request, URL);
         String oauth_consumer_key = null;
         try {
             oauth_consumer_key = oam.getConsumerKey();
@@ -135,7 +254,7 @@ public class BasicLTIUtil {
         String base_string = null;
         try {
             base_string = OAuthSignatureMethod.getBaseString(oam);
-        } catch (IOException|URISyntaxException e) {
+        } catch (IOException | URISyntaxException e) {
             return new LtiVerificationResult(false, LtiError.BAD_REQUEST, "Unable to find base string");
         }
 
@@ -780,8 +899,8 @@ public class BasicLTIUtil {
     }
 
     /**
-     * Mutates the passed {@code Map<String, String> map} variable. Puts the key,value
-     * into the Map if the value is not null and is not empty.
+     * Mutates the passed {@code Map<String, String> map} variable. Puts the
+     * key,value into the Map if the value is not null and is not empty.
      *
      * @param map Variable is mutated by this method.
      * @param key
@@ -850,14 +969,15 @@ public class BasicLTIUtil {
         return retval;
     }
 
-    static public String getRealPath(HttpServletRequest request, String extUrl) {
-        String URLstr = request.getRequestURL().toString();
+    static public String getRealPath(HttpEvent request, String extUrl) {
+        String URLstr = request.request().uri();
         String retval = getRealPath(URLstr, extUrl);
         return retval;
     }
 
     /**
-     * Simple utility method to help with the migration from {@code Properties} to {@code Map<String, String>}.
+     * Simple utility method to help with the migration from {@code Properties}
+     * to {@code Map<String, String>}.
      *
      * @param properties
      * @return
@@ -869,8 +989,8 @@ public class BasicLTIUtil {
     }
 
     /**
-     * Simple utility method to help with the migration from {@code Map<String, String>}
-     * to {@code Properties}.
+     * Simple utility method to help with the migration from
+     * {@code Map<String, String>} to {@code Properties}.
      *
      * @deprecated Should migrate to {@code Map<String, String>} signatures.
      * @param map

@@ -1,6 +1,6 @@
 package org.imsglobal.lti.launch;
 
-import javax.servlet.http.HttpServletRequest;
+import com.mastfrog.acteur.HttpEvent;
 import java.util.Map;
 
 /**
@@ -18,14 +18,14 @@ public class LtiLaunch {
     private String launchPresentationReturnUrl;
     private String toolConsumerInstanceGuid;
 
-    public LtiLaunch(HttpServletRequest request) {
+    public LtiLaunch(HttpEvent request) {
         this.user = new LtiUser(request);
-        this.version = request.getParameter("lti_version");
-        this.messageType = request.getParameter("lti_message_type");
-        this.resourceLinkId = request.getParameter("resource_link_id");
-        this.contextId = request.getParameter("context_id");
-        this.launchPresentationReturnUrl = request.getParameter("launch_presentation_return_url");
-        this.toolConsumerInstanceGuid = request.getParameter("tool_consumer_instance_guid");
+        this.version = request.decodedUrlParameter("lti_version");
+        this.messageType = request.decodedUrlParameter("lti_message_type");
+        this.resourceLinkId = request.decodedUrlParameter("resource_link_id");
+        this.contextId = request.decodedUrlParameter("context_id");
+        this.launchPresentationReturnUrl = request.decodedUrlParameter("launch_presentation_return_url");
+        this.toolConsumerInstanceGuid = request.decodedUrlParameter("tool_consumer_instance_guid");
     }
 
     public LtiLaunch(Map<String, String> parameters) {

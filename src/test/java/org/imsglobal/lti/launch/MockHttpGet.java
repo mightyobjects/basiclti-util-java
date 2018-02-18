@@ -1,9 +1,8 @@
 package org.imsglobal.lti.launch;
 
+import com.mastfrog.acteur.headers.Method;
+import com.mastfrog.acteur.util.HttpMethod;
 import org.apache.http.client.methods.HttpGet;
-
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * @author  Paul Gray
@@ -14,22 +13,17 @@ public class MockHttpGet extends BaseMockHttpServletRequest {
 
     public MockHttpGet(HttpGet req) throws Exception {
         super(req);
+        System.out.println("MOCK GET WITH " + req.getURI());
         this.get = req;
     }
 
-    @Override
-    public String getMethod() {
-        return "GET";
+    public MockHttpGet(String uri) throws Exception {
+        this(new HttpGet(uri));
     }
 
     @Override
-    public Map getParameterMap() {
-        String q = this.getQueryString();
-        if(q == null) {
-            return new HashMap();
-        } else {
-            return this.getQueryMap(this.getQueryString());
-        }
+    public HttpMethod method() {
+        return Method.GET;
     }
 
 }

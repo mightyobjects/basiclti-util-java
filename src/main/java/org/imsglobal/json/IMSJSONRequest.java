@@ -1,6 +1,13 @@
 package org.imsglobal.json;
 
+import static com.google.common.net.MediaType.JSON_UTF_8;
+import com.mastfrog.acteur.HttpEvent;
+import com.mastfrog.acteur.Response;
+import com.mastfrog.acteur.headers.Headers;
+import static com.mastfrog.acteur.headers.Headers.CONTENT_TYPE;
+import io.netty.buffer.ByteBufInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.net.URLDecoder;
@@ -10,18 +17,14 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.logging.Logger;
 
-import javax.servlet.ServletInputStream;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
 import net.oauth.OAuthAccessor;
 import net.oauth.OAuthConsumer;
 import net.oauth.OAuthMessage;
 import net.oauth.OAuthValidator;
 import net.oauth.SimpleOAuthValidator;
-import net.oauth.server.OAuthServlet;
 import net.oauth.signature.OAuthSignatureMethod;
 import org.apache.commons.codec.binary.Base64;
+import static org.imsglobal.lti.BasicLTIUtil.getMessage;
 
 import org.json.simple.JSONValue;
 
@@ -59,16 +62,14 @@ public class IMSJSONRequest {
 	}
 
 	// Normal Constructor
-	public IMSJSONRequest(String oauth_consumer_key, String oauth_secret, HttpServletRequest request) 
-	{
+	public IMSJSONRequest(String oauth_consumer_key, String oauth_secret, HttpEvent request)	{
 		loadFromRequest(request);
 		if ( ! valid ) return;
 		validateRequest(oauth_consumer_key, oauth_secret, request);
 	}
 
 	// Constructor for delayed validation
-	public IMSJSONRequest(HttpServletRequest request) 
-	{
+	public IMSJSONRequest(HttpEvent request)	{
 		loadFromRequest(request);
 	}
 
@@ -80,9 +81,9 @@ public class IMSJSONRequest {
 
 	// Load but do not check the authentication
 	@SuppressWarnings("deprecation")
-	public void loadFromRequest(HttpServletRequest request) 
-	{
-		header = request.getHeader("Authorization");
+    public void loadFromRequest(HttpEvent request) {
+        CharSequence h = request.header(Headers.AUTHORIZATION.toStringHeader());
+        header = h == null ? null : h.toString();
 		System.out.println("Header: "+header);
 		oauth_body_hash = null;
 		if ( header != null ) {
@@ -112,7 +113,7 @@ public class IMSJSONRequest {
 		ByteArrayOutputStream bos = new ByteArrayOutputStream();
 		int chars = 0;
 		try {
-			ServletInputStream is = request.getInputStream();
+                    InputStream is = new ByteBufInputStream(request.content());
 			int readNum;
 			do {
 				readNum = is.read(buf);
@@ -153,15 +154,13 @@ public class IMSJSONRequest {
 	}
 
 	// Assumes data is all loaded
-	public void validateRequest(String oauth_consumer_key, String oauth_secret, HttpServletRequest request) 
-	{
+	public void validateRequest(String oauth_consumer_key, String oauth_secret, HttpEvent request)	{
 		validateRequest(oauth_consumer_key, oauth_secret, request, null) ;
 	}
 
-	public void validateRequest(String oauth_consumer_key, String oauth_secret, HttpServletRequest request, String URL) 
-	{
+    public void validateRequest(String oauth_consumer_key, String oauth_secret, HttpEvent request, String URL)	{
 		valid = false;
-		OAuthMessage oam = OAuthServlet.getMessage(request, URL);
+        OAuthMessage oam = getMessage(request, URL);
 		OAuthValidator oav = new SimpleOAuthValidator();
 		OAuthConsumer cons = new OAuthConsumer("about:blank#OAuth+CallBack+NotUsed", 
 				oauth_consumer_key, oauth_secret, null);
@@ -218,11 +217,11 @@ public class IMSJSONRequest {
 	/* IMS JSON version of Errors - does the complet request - returns the JSON in case
 	   the code above us wants to log it. */
 	@SuppressWarnings("static-access")
-	public static String doErrorJSON(HttpServletRequest request,HttpServletResponse response, 
-			IMSJSONRequest json, String message, Exception e) 
+    public static String doErrorJSON(HttpEvent request, Response response,
+         			IMSJSONRequest json, String message, Exception e) 
 		throws java.io.IOException 
 	{
-		response.setContentType(APPLICATION_JSON);
+            response.add(CONTENT_TYPE, JSON_UTF_8);
 		Map<String, Object> jsonResponse = new TreeMap<String, Object>();
 
 		Map<String, String> status = null;
@@ -248,10 +247,9 @@ public class IMSJSONRequest {
 				jsonResponse.put("traceback", f.getLocalizedMessage());
 			}
 		}
-		String jsonText = JSONValue.toJSONString(jsonResponse);
-		PrintWriter out = response.getWriter();
-		out.println(jsonText);
-		return jsonText;
+            String jsonText = JSONValue.toJSONString(jsonResponse);
+            response.setMessage(jsonText + "\n");
+            return jsonText;
 	}
 
 	/** Unit Tests */

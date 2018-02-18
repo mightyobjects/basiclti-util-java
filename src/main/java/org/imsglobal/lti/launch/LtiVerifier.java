@@ -1,7 +1,8 @@
 package org.imsglobal.lti.launch;
 
 
-import javax.servlet.http.HttpServletRequest;
+import com.google.inject.ImplementedBy;
+import com.mastfrog.acteur.HttpEvent;
 import java.util.Map;
 
 /**
@@ -11,6 +12,7 @@ import java.util.Map;
  * @author  Paul Gray
  * @since   1.1
  */
+@ImplementedBy(LtiOauthVerifier.class)
 public interface LtiVerifier {
 
     /**
@@ -24,7 +26,7 @@ public interface LtiVerifier {
      * information about the request).
      * @throws LtiVerificationException
      */
-    public LtiVerificationResult verify(HttpServletRequest request, String secret) throws LtiVerificationException;
+    public LtiVerificationResult verify(HttpEvent request, String secret) throws Exception;
 
     /**
      * This method will verify a list of properties (mapped

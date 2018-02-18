@@ -1,7 +1,12 @@
 package org.imsglobal.pox;
 
+import com.mastfrog.acteur.HttpEvent;
+import io.netty.buffer.ByteBufInputStream;
+import static io.netty.handler.codec.http.HttpHeaders.Names.AUTHORIZATION;
+import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.Reader;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -12,7 +17,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.logging.Logger;
 
-import javax.servlet.http.HttpServletRequest;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.xpath.XPath;
@@ -25,7 +29,6 @@ import net.oauth.OAuthConsumer;
 import net.oauth.OAuthMessage;
 import net.oauth.OAuthValidator;
 import net.oauth.SimpleOAuthValidator;
-import net.oauth.server.OAuthServlet;
 import net.oauth.signature.OAuthSignatureMethod;
 import oauth.signpost.commonshttp.CommonsHttpOAuthConsumer;
 import oauth.signpost.exception.OAuthException;
@@ -39,6 +42,7 @@ import org.apache.http.client.HttpResponseException;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.DefaultHttpClient;
+import static org.imsglobal.lti.BasicLTIUtil.getMessage;
 import org.imsglobal.lti.XMLMap;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -157,16 +161,14 @@ public class IMSPOXRequest {
 	}
 
 	// Normal Constructor
-	public IMSPOXRequest(String oauth_consumer_key, String oauth_secret, HttpServletRequest request) 
-	{
+	public IMSPOXRequest(String oauth_consumer_key, String oauth_secret, HttpEvent request)	{
 		loadFromRequest(request);
 		if ( ! valid ) return;
 		validateRequest(oauth_consumer_key, oauth_secret, request);
 	}
 
 	// Constructor for delayed validation
-	public IMSPOXRequest(HttpServletRequest request) 
-	{
+	public IMSPOXRequest(HttpEvent request)	{
 		loadFromRequest(request);
 	}
 
@@ -178,16 +180,15 @@ public class IMSPOXRequest {
 	}
 
 	// Load but do not check the authentication
-	public void loadFromRequest(HttpServletRequest request) 
-	{
-		String contentType = request.getContentType();
+	public void loadFromRequest(HttpEvent request)	{
+            String contentType = request.header(CONTENT_TYPE);
 		if ( ! "application/xml".equals(contentType) ) {
 			errorMessage = "Content Type must be application/xml";
 			Log.info(errorMessage+"\n"+contentType);
 			return;
 		}
 
-		setAuthHeader(request.getHeader("Authorization"));
+            setAuthHeader(request.header(AUTHORIZATION));
 		if ( oauth_body_hash == null ) {
 			errorMessage = "Did not find oauth_body_hash";
 			Log.info(errorMessage+"\n"+header);
@@ -195,7 +196,7 @@ public class IMSPOXRequest {
 		}
 
 		try {
-			Reader in = request.getReader();
+                    Reader in = new InputStreamReader(new ByteBufInputStream(request.content()));
 			postBody = readPostBody(in);
 		} catch(Exception e) {
 			errorMessage = "Could not read message body:"+e.getMessage();
@@ -305,15 +306,13 @@ public class IMSPOXRequest {
 	}
 
 	// Assumes data is all loaded
-	public void validateRequest(String oauth_consumer_key, String oauth_secret, HttpServletRequest request) 
-	{
+	public void validateRequest(String oauth_consumer_key, String oauth_secret, HttpEvent request)	{
 		validateRequest(oauth_consumer_key, oauth_secret, request, null) ;
 	}
 
-	public void validateRequest(String oauth_consumer_key, String oauth_secret, HttpServletRequest request, String URL) 
-	{
+    public void validateRequest(String oauth_consumer_key, String oauth_secret, HttpEvent request, String URL)	{
 		valid = false;
-		OAuthMessage oam = OAuthServlet.getMessage(request, URL);
+            OAuthMessage oam = getMessage(request, URL);
 		OAuthValidator oav = new SimpleOAuthValidator();
 		OAuthConsumer cons = new OAuthConsumer("about:blank#OAuth+CallBack+NotUsed", 
 				oauth_consumer_key, oauth_secret, null);

@@ -19,6 +19,8 @@
 
 package org.imsglobal.lti2;
 
+import com.mastfrog.acteur.HttpEvent;
+import static io.netty.handler.codec.http.HttpHeaderNames.CONTENT_TYPE;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Enumeration;
@@ -26,8 +28,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
 import java.util.logging.Logger;
-
-import javax.servlet.http.HttpServletRequest;
 
 import org.imsglobal.lti.BasicLTIUtil;
 import org.imsglobal.lti2.objects.consumer.ServiceOffered;
@@ -142,14 +142,14 @@ public class LTI2Util {
 	// for PUT.  I begged to simplify the business logic but was overrulled.
 	// So we write obtuse code.
 	@SuppressWarnings({ "unchecked", "unused" })
-	public static Object getSettings(HttpServletRequest request, String scope,
-		JSONObject link_settings, JSONObject binding_settings, JSONObject proxy_settings,
+    public static Object getSettings(HttpEvent request, String scope,
+          		JSONObject link_settings, JSONObject binding_settings, JSONObject proxy_settings,
 		String link_url, String binding_url, String proxy_url)
 	{
 		// Check to see if we are doing the bubble
-		String bubbleStr = request.getParameter("bubble");
-		String acceptHdr = request.getHeader("Accept");
-		String contentHdr = request.getContentType();
+		String bubbleStr = request.decodedUrlParameter("bubble");
+            String acceptHdr = request.header("Accept");
+            String contentHdr = request.header(CONTENT_TYPE);
 
 		if ( bubbleStr != null && bubbleStr.equals("all") &&
 			acceptHdr.indexOf(StandardServices.TOOLSETTINGS_FORMAT) < 0 ) {

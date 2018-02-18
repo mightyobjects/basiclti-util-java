@@ -5,63 +5,26 @@
  */
 package org.imsglobal.aspect;
 
-import javax.servlet.http.HttpServletRequest;
-import org.aspectj.lang.ProceedingJoinPoint;
-import org.aspectj.lang.annotation.Around;
-import org.aspectj.lang.annotation.Aspect;
+import com.mastfrog.acteur.Acteur;
+import com.mastfrog.acteur.HttpEvent;
 import org.imsglobal.lti.launch.LtiVerificationResult;
 import org.imsglobal.lti.launch.LtiVerifier;
 
-import java.util.ArrayList;
-import java.util.List;
+import javax.inject.Inject;
+import org.imsglobal.lti.launch.LtiVerificationException;
 
 /**
  *
  * @author pgray
  */
-@Aspect
-public class LtiLaunchVerifier {
+public class LtiLaunchVerifier extends Acteur {
 
-    public LtiKeySecretService keyService;
-
-    public LtiVerifier ltiVerifier;
-
-    public LtiLaunchVerifier(LtiKeySecretService keyService, LtiVerifier ltiVerifier) {
-        this.keyService = keyService;
-        this.ltiVerifier = ltiVerifier;
-    }
-
-    @Around("@annotation(launch)")
-    public Object verifyLtiLaunch(ProceedingJoinPoint pjp, Lti launch) throws Throwable {
-        HttpServletRequest request = null;
-        for (Object arg : pjp.getArgs()) {
-            if (HttpServletRequest.class.isInstance(arg)) {
-                request = (HttpServletRequest) arg;
-            }
-        }
-        if(request == null){
-            throw new IllegalStateException(getErrorMessageForArgumentClass("HttpServletRequest", pjp.getSignature().toLongString()));
-        }
-
-        String oauthSecret = keyService.getSecretForKey(request.getParameter("oauth_consumer_key"));
-        LtiVerificationResult ltiResult = ltiVerifier.verify(request, oauthSecret);//BasicLTIUtil.validateMessage(request, request.getRequestURL().toString(), oauthSecret);
-
-        Boolean ltiVerificationResultExists = false;
-        //This array will hold the arguments to the join point, so we can pass them along to the advised function.
-        List<Object> args = new ArrayList<>(pjp.getArgs().length);
-        for (Object arg : pjp.getArgs()) {
-            if (arg != null && arg.getClass().equals(LtiVerificationResult.class)) {
-                args.add(ltiResult);
-                ltiVerificationResultExists = true;
-            } else {
-                args.add(arg);
-            }
-        }
-        if(!ltiVerificationResultExists){
-            throw new IllegalStateException(getErrorMessageForArgumentClass("LtiVerificationResult", pjp.getSignature().toLongString()));
-        }
-
-        return pjp.proceed(args.toArray());
+    @Inject
+    public LtiLaunchVerifier(LtiKeySecretService keyService, LtiVerifier ltiVerifier, HttpEvent request) throws LtiVerificationException, Exception {
+        String oauthSecret = keyService.getSecretForKey(request.decodedUrlParameter("oauth_consumer_key"));
+        LtiVerificationResult ltiResult = ltiVerifier.verify(request, oauthSecret);
+        //BasicLTIUtil.validateMessage(request, request.getRequestURL().toString(), oauthSecret);
+        next(ltiResult);
     }
 
     public String getErrorMessageForArgumentClass(String argumentClass, String signature){

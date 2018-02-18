@@ -1,21 +1,26 @@
 package org.imsglobal.lti.launch;
 
-import org.apache.http.HttpRequest;
+import com.mastfrog.giulius.tests.GuiceRunner;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.methods.HttpPut;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
 import java.net.URI;
+import javax.inject.Inject;
+import org.apache.http.Header;
+import org.junit.runner.RunWith;
 
 
 /**
  * @author  Paul Gray
  */
+@RunWith(GuiceRunner.class)
 public class LtiVerifierAndSignerTest {
 
-    LtiVerifier verifier = new LtiOauthVerifier();
+    @Inject
+    LtiVerifier verifier;
+
     LtiSigner signer = new LtiOauthSigner();
 
     @Test
@@ -26,9 +31,14 @@ public class LtiVerifierAndSignerTest {
         HttpPost ltiLaunch = new HttpPost(new URI("http://example.com/test"));
 
         signer.sign(ltiLaunch, key, secret);
+        MockHttpPost post = new MockHttpPost(ltiLaunch);
+        for (Header h : ltiLaunch.getAllHeaders()) {
+            assertEquals("Mismatch on " + h.getName(), h.getValue(), post.header(h.getName()));
+        }
         LtiVerificationResult result = verifier.verify(new MockHttpPost(ltiLaunch), secret);
-
-        assertTrue(result.getSuccess());
+        System.out.println("RESULT IS " + result);
+        System.out.println("RESULT ERROR IS " + result.getError());
+        assertTrue(result.getError() + "", result.getSuccess());
     }
 
     @Test
@@ -54,7 +64,7 @@ public class LtiVerifierAndSignerTest {
         signer.sign(ltiServiceGetRequest, key, secret);
         LtiVerificationResult result = verifier.verify(new MockHttpGet(ltiServiceGetRequest), secret);
 
-        assertTrue(result.getSuccess());
+        assertTrue(result.getError() + "", result.getSuccess());
     }
 
     @Test

@@ -1,6 +1,6 @@
 package org.imsglobal.lti.launch;
 
-import javax.servlet.http.HttpServletRequest;
+import com.mastfrog.acteur.HttpEvent;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -13,11 +13,11 @@ public class LtiUser {
     private String id;
     private List<String> roles;
 
-    public LtiUser(HttpServletRequest request) {
-        this.id = request.getParameter("user_id");
+    public LtiUser(HttpEvent request) {
+        this.id = request.decodedUrlParameter("user_id");
         this.roles = new LinkedList<>();
-        if(request.getParameter("roles") != null) {
-            for (String role : request.getParameter("roles").split(",")) {
+        if (request.decodedUrlParameter("roles") != null) {
+            for (String role : request.decodedUrlParameter("roles").split(",")) {
                 this.roles.add(role.trim());
             }
         }

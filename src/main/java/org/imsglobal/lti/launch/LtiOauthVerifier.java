@@ -1,49 +1,60 @@
 package org.imsglobal.lti.launch;
 
-import net.oauth.*;
-import net.oauth.server.OAuthServlet;
+import com.mastfrog.acteur.HttpEvent;
+import com.mastfrog.acteur.server.PathFactory;
 
-import javax.servlet.http.HttpServletRequest;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.logging.Logger;
+import javax.inject.Inject;
+import net.oauth.OAuthAccessor;
+import net.oauth.OAuthConsumer;
+import net.oauth.OAuthMessage;
+import net.oauth.OAuthValidator;
+import net.oauth.SimpleOAuthValidator;
+import org.imsglobal.lti.BasicLTIUtil;
+import static org.imsglobal.lti.BasicLTIUtil.getMessage;
 
 /**
  * This class <b>verifies</b> LTI launches according to the Oauth 1.0 spec
- * @author  Paul Gray
- * @since   1.1
+ *
+ * @author Paul Gray
+ * @since 1.1
  */
 public class LtiOauthVerifier implements LtiVerifier {
 
-    public static final String OAUTH_KEY_PARAMETER= "oauth_consumer_key";
+    public static final String OAUTH_KEY_PARAMETER = "oauth_consumer_key";
 
     private final static Logger logger = Logger.getLogger(LtiOauthVerifier.class.getName());
+    private final PathFactory paths;
+
+    @Inject
+    public LtiOauthVerifier(PathFactory paths) {
+        this.paths = paths;
+    }
 
     /**
      * This method verifies the signed HttpServletRequest
+     *
      * @param request the HttpServletRequest that will be verified
      * @param secret the secret to verify the properties with
-     * @return the result of the verification, along with contextual
-     * information
+     * @return the result of the verification, along with contextual information
      * @throws LtiVerificationException
      */
     @Override
-    public LtiVerificationResult verify(HttpServletRequest request, String secret) throws LtiVerificationException {
-        OAuthMessage oam = OAuthServlet.getMessage(request, OAuthServlet.getRequestURL(request));
+    public LtiVerificationResult verify(HttpEvent request, String secret) throws Exception {
+        OAuthMessage oam = getMessage(request, BasicLTIUtil.getRequestURL(request, paths));
         String oauth_consumer_key = null;
-        try {
-            oauth_consumer_key = oam.getConsumerKey();
-        } catch (Exception e) {
-            return new LtiVerificationResult(false, LtiError.BAD_REQUEST, "Unable to find consumer key in message");
-        }
+        oauth_consumer_key = oam.getConsumerKey();
 
-        OAuthValidator oav = new SimpleOAuthValidator();
+        SimpleOAuthValidator oav = new SimpleOAuthValidator();
         OAuthConsumer cons = new OAuthConsumer(null, oauth_consumer_key, secret, null);
         OAuthAccessor acc = new OAuthAccessor(cons);
 
         try {
             oav.validateMessage(oam, acc);
         } catch (Exception e) {
+            e.printStackTrace();
             return new LtiVerificationResult(false, LtiError.BAD_REQUEST, "Failed to validate: " + e.getLocalizedMessage());
         }
         return new LtiVerificationResult(true, new LtiLaunch(request));
@@ -51,7 +62,9 @@ public class LtiOauthVerifier implements LtiVerifier {
 
     /**
      * This method will verify a collection of parameters
-     * @param parameters the parameters that will be verified. mapped by key &amp; value
+     *
+     * @param parameters the parameters that will be verified. mapped by key
+     * &amp; value
      * @param url the url this request was made at
      * @param method the method this url was requested with
      * @param secret the secret to verify the propertihes with

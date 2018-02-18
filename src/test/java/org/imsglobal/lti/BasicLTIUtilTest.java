@@ -1,16 +1,18 @@
 package org.imsglobal.lti;
 
+import com.mastfrog.acteur.HttpEvent;
+import static com.mastfrog.url.Protocols.HTTPS;
+import com.mastfrog.url.URL;
 import java.io.IOException;
 import java.net.URISyntaxException;
-import javax.servlet.http.HttpServletRequest;
 import net.oauth.OAuthAccessor;
 import net.oauth.OAuthException;
 import net.oauth.OAuthMessage;
 import net.oauth.SimpleOAuthValidator;
-import net.oauth.server.OAuthServlet;
 import net.oauth.signature.OAuthSignatureMethod;
 import org.imsglobal.lti.launch.LtiError;
 import org.imsglobal.lti.launch.LtiVerificationResult;
+import org.imsglobal.lti.launch.MockHttpGet;
 import org.junit.Assert;
 import static org.junit.Assert.*;
 
@@ -24,7 +26,7 @@ import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
 
 @RunWith(PowerMockRunner.class)
-@PrepareForTest({OAuthServlet.class, OAuthSignatureMethod.class, SimpleOAuthValidator.class, BasicLTIUtil.class})
+@PrepareForTest({OAuthSignatureMethod.class, SimpleOAuthValidator.class, BasicLTIUtil.class, HttpEvent.class})
 public class BasicLTIUtilTest {
 
     @Before
@@ -48,13 +50,12 @@ public class BasicLTIUtilTest {
     @Test
     public void testValidateMessageFailsWhenNoConsumerKey() throws IOException, Exception{
         
-        HttpServletRequest requestMock = Mockito.mock(HttpServletRequest.class);
         String url = "https://example.com/lti-launch";
+        HttpEvent requestMock = new MockHttpGet(url);
         
-        PowerMockito.mockStatic(OAuthServlet.class);
         OAuthMessage messageMock = Mockito.mock(OAuthMessage.class);
         
-        PowerMockito.when(OAuthServlet.getMessage(requestMock, url)).thenReturn(messageMock);
+//        PowerMockito.when(getMessage(requestMock, url)).thenReturn(messageMock);
 
         Mockito.when(messageMock.getConsumerKey()).thenThrow(new IOException("io exception"));
 
@@ -69,8 +70,8 @@ public class BasicLTIUtilTest {
     @Test
     public void testValidateMessageFailWhenUriIsMalformed() throws Exception {
         
-        HttpServletRequest requestMock = Mockito.mock(HttpServletRequest.class);
         String url = "https://example.com/lti-launch";
+        HttpEvent requestMock = new MockHttpGet(url);
         
         PowerMockito.mockStatic(OAuthSignatureMethod.class);
         PowerMockito.when(OAuthSignatureMethod.getBaseString(Matchers.any(OAuthMessage.class))).thenThrow(new URISyntaxException("","",0));
@@ -85,8 +86,8 @@ public class BasicLTIUtilTest {
     @Test
     public void testValidateMessageFailOnIOException() throws Exception {
         
-        HttpServletRequest requestMock = Mockito.mock(HttpServletRequest.class);
         String url = "https://example.com/lti-launch";
+        HttpEvent requestMock = new MockHttpGet(url);
         
         PowerMockito.mockStatic(OAuthSignatureMethod.class);
         PowerMockito.when(OAuthSignatureMethod.getBaseString(Matchers.any(OAuthMessage.class))).thenThrow(new IOException(""));
@@ -107,7 +108,9 @@ public class BasicLTIUtilTest {
         PowerMockito.mockStatic(OAuthSignatureMethod.class);
         PowerMockito.when(OAuthSignatureMethod.getBaseString(Matchers.any(OAuthMessage.class))).thenReturn("");
 
-        LtiVerificationResult result = BasicLTIUtil.validateMessage(Mockito.mock(HttpServletRequest.class), "https://example.com/lti-launch", "secret");        
+        String uri = "https://example.com/lti-launch";
+        MockHttpGet get = new MockHttpGet(uri);
+        LtiVerificationResult result = BasicLTIUtil.validateMessage(get, uri, "secret");
 
         Assert.assertEquals(LtiError.BAD_REQUEST, result.getError());
         Assert.assertEquals(Boolean.FALSE, result.getSuccess());
@@ -123,7 +126,9 @@ public class BasicLTIUtilTest {
         PowerMockito.mockStatic(OAuthSignatureMethod.class);
         PowerMockito.when(OAuthSignatureMethod.getBaseString(Matchers.any(OAuthMessage.class))).thenReturn("");
 
-        LtiVerificationResult result = BasicLTIUtil.validateMessage(Mockito.mock(HttpServletRequest.class), "https://example.com/lti-launch", "secret");
+        String uri = "https://example.com/lti-launch";
+        MockHttpGet get = new MockHttpGet(uri);
+        LtiVerificationResult result = BasicLTIUtil.validateMessage(get, uri, "secret");
 
         Assert.assertEquals(LtiError.BAD_REQUEST, result.getError());
         Assert.assertEquals(Boolean.FALSE, result.getSuccess());
@@ -139,7 +144,9 @@ public class BasicLTIUtilTest {
         PowerMockito.mockStatic(OAuthSignatureMethod.class);
         PowerMockito.when(OAuthSignatureMethod.getBaseString(Matchers.any(OAuthMessage.class))).thenReturn("");
 
-        LtiVerificationResult result = BasicLTIUtil.validateMessage(Mockito.mock(HttpServletRequest.class), "https://example.com/lti-launch", "secret");        
+        String uri = "https://example.com/lti-launch";
+        MockHttpGet get = new MockHttpGet(uri);
+        LtiVerificationResult result = BasicLTIUtil.validateMessage(get, uri, "secret");
 
         Assert.assertEquals(LtiError.BAD_REQUEST, result.getError());
         Assert.assertEquals(Boolean.FALSE, result.getSuccess());
@@ -154,22 +161,33 @@ public class BasicLTIUtilTest {
         Mockito.doNothing().when(sov).validateMessage(Matchers.any(OAuthMessage.class), Matchers.any(OAuthAccessor.class));
         PowerMockito.mockStatic(OAuthSignatureMethod.class);
         PowerMockito.when(OAuthSignatureMethod.getBaseString(Matchers.any(OAuthMessage.class))).thenReturn("");
-        
-        HttpServletRequest req = Mockito.mock(HttpServletRequest.class);
-        Mockito.when(req.getParameter("user_id")).thenReturn("pgray");
-        Mockito.when(req.getParameter("roles")).thenReturn("instructor, teacher,administrator");
-        Mockito.when(req.getParameter("lti_version")).thenReturn("lpv1");
-        Mockito.when(req.getParameter("lti_message_type")).thenReturn("lti");
-        Mockito.when(req.getParameter("resource_link_id")).thenReturn("12345");
-        Mockito.when(req.getParameter("context_id")).thenReturn("9876");
-        Mockito.when(req.getParameter("launch_presentation_return_url")).thenReturn("http://example.com/return");
-        Mockito.when(req.getParameter("tool_consumer_instance_guid")).thenReturn("instance_id");
 
-        LtiVerificationResult result = BasicLTIUtil.validateMessage(req, "https://example.com/lti-launch", "secret1");        
+        URL url = URL.builder(HTTPS).setHost("example.com").setPath("lti-launch")
+                .addQueryPair("user_id", "pgray")
+                .addQueryPair("roles", "instructor, teacher,administrator")
+                .addQueryPair("lti_version", "lpv1")
+                .addQueryPair("lti_message_type", "lti")
+                .addQueryPair("resource_link_id", "12345")
+                .addQueryPair("context_id", "9876")
+                .addQueryPair("launch_presentation_return_url", "http://example.com/return")
+                .addQueryPair("tool_consumer_instance_guid", "instance_id")
+                .create();
+
+        String uri = url.toString();
+        MockHttpGet req = new MockHttpGet(uri);
+
+        assertEquals("pgray", req.urlParameter("user_id"));
+        assertEquals("pgray", req.decodedUrlParameter("user_id"));
+
+        System.out.println("URI IS: " + uri);
+
+        LtiVerificationResult result = BasicLTIUtil.validateMessage(req, "https://example.com/lti-launch", "secret1");
 
         Assert.assertEquals(null, result.getError());
         Assert.assertEquals(Boolean.TRUE, result.getSuccess());
         Assert.assertNotNull(result.getLtiLaunchResult());
+
+        System.out.println("USER " + result.getLtiLaunchResult().getUser());
         
         Assert.assertEquals("pgray", result.getLtiLaunchResult().getUser().getId());
         Assert.assertEquals(3, result.getLtiLaunchResult().getUser().getRoles().size());
