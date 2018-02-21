@@ -24,10 +24,10 @@ import static com.google.common.net.MediaType.HTML_UTF_8;
 import static com.google.common.net.MediaType.JSON_UTF_8;
 import com.mastfrog.acteur.HttpEvent;
 import com.mastfrog.acteur.Response;
+import com.mastfrog.acteur.headers.Headers;
 import static com.mastfrog.acteur.headers.Headers.CONTENT_TYPE;
 import static com.mastfrog.acteur.headers.Headers.X_FORWARDED_PROTO;
 import com.mastfrog.acteur.server.PathFactory;
-import com.mastfrog.acteur.server.ServerModule;
 import com.mastfrog.settings.Settings;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
@@ -45,6 +45,8 @@ import java.util.Properties;
 import java.util.TreeMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.inject.Inject;
 
 import org.imsglobal.lti.BasicLTIConstants;
@@ -128,7 +130,17 @@ public class LTI2Servlet {
     private String scheme(HttpEvent evt) {
         String result = evt.header(X_FORWARDED_PROTO.name());
         if (result == null) {
-            result = paths.constructURL("/").getProtocol().toString();
+            String fwd = evt.header(Headers.stringHeader("Forwarded"));
+            if (fwd != null) {
+                Pattern p = Pattern.compile("proto=(\\S+)[;$]");
+                Matcher m = p.matcher(fwd);
+                if (m.find()) {
+                    result = m.group(1);
+                }
+            }
+            if (result == null) {
+                result = paths.constructURL("/").getProtocol().toString();
+            }
         }
         return result;
     }
@@ -156,7 +168,7 @@ public class LTI2Servlet {
 		System.out.println("LTI Service request from IP=" + ipAddress);
 
             String rpi = null; // XXX handle basePath
-            String uri = request.request().uri();
+            String uri = request.path().toString();
 		String [] parts = uri.split("/");
 		if ( parts.length < 4 ) {
                     response.status(BAD_REQUEST);
@@ -225,7 +237,7 @@ public class LTI2Servlet {
 				"value=\"http://localhost:8888/sakai-api-test/tp.php\"><input type=\"submit\">\n";
 		}
 
-        response.setMessage(output + "\n");
+        response.content(output + "\n");
     }
 
 	// We are actually bypassing the activation step.  Usually activation will parse
@@ -286,7 +298,7 @@ public class LTI2Servlet {
 			boolean dodebug = true;
 			output = BasicLTIUtil.postLaunchHTML(ltiProps, launch, dodebug);
 		}
-        response.setMessage(output + "\n");
+            response.content(output + "\n");
     }
 
     protected void getToolConsumerProfile(HttpEvent request,
@@ -303,7 +315,7 @@ public class LTI2Servlet {
                         ObjectWriter writer = mapper.writer().withDefaultPrettyPrinter();
 			// System.out.println(mapper.writeValueAsString(consumer));
 			response.add(CONTENT_TYPE, JSON_UTF_8);
-                    response.setMessage(writer.writeValueAsString(consumer));
+                    response.content(writer.writeValueAsString(consumer));
                     // System.out.println(writer.writeValueAsString(consumer));
 		}
 		catch (Exception e) {
@@ -436,21 +448,26 @@ public class LTI2Servlet {
             response.status(CREATED);
 		String jsonText = JSONValue.toJSONString(jsonResponse);
         M_log.log(Level.FINE, jsonText);
-        response.setMessage(jsonText + "\n");
+            response.content(jsonText + "\n");
     }
 
     public String getServiceURL(HttpEvent request) {
-
-        String scheme = scheme(request);             // http
-        String serverName = request.header(HttpHeaderNames.HOST) == null
-                ? paths.constructURL("/").getHost().toString() : request.header(HttpHeaderNames.HOST);
-
-        int serverPort = paths.constructURL("/").getPort().intValue();
-        String contextPath = settings.getString(ServerModule.SETTINGS_KEY_BASE_PATH) == null
-                ? "/" : "/" + settings.getString(ServerModule.SETTINGS_KEY_BASE_PATH);
-        String servletPath = request.path().toString();
-		String url = scheme+"://"+serverName+":"+serverPort+contextPath+servletPath+"/";
-		return url;
+//        String scheme = scheme(request);             // http
+//        String fwHost = request.header(Headers.stringHeader("X-Forwarded-Host"));
+//        String serverName = fwHost != null ? fwHost : request.header(HttpHeaderNames.HOST) == null
+//                ? paths.constructURL("/").getHost().toString() : request.header(HttpHeaderNames.HOST);
+//
+//        if (serverName.indexOf(':') > 0) {
+//            serverName = serverName.substring(0, serverName.indexOf(':'));
+//        }
+//
+//        int serverPort = paths.constructURL("/").getPort().intValue();
+//        String contextPath = settings.getString(ServerModule.SETTINGS_KEY_BASE_PATH) == null
+//                ? "/" : "/" + settings.getString(ServerModule.SETTINGS_KEY_BASE_PATH);
+//        String servletPath = request.path().toString();
+//		String url = scheme+"://"+serverName+":"+serverPort+contextPath+servletPath+"/";
+//		return url;
+        return request.getRequestURL(true);
 	}
 
 	@SuppressWarnings({ "rawtypes", "unchecked" })
@@ -459,7 +476,7 @@ public class LTI2Servlet {
 	{
 		IMSJSONRequest jsonRequest = null;
 		String retval = null;
-		if ( "GET".equals(request.getMethod()) ) {
+            if ("GET".equals(request.method().toString())) {
 			String grade = PERSIST.get("grade");
 			String comment = PERSIST.get("comment");
 
@@ -476,9 +493,9 @@ public class LTI2Servlet {
                     response.status(OK);
 			String jsonText = JSONValue.toJSONString(jsonResponse);
                     M_log.log(Level.FINE, jsonText);
-                    response.setMessage(jsonText + "\n");
+                    response.content(jsonText + "\n");
                     return;
-		} else if ( "PUT".equals(request.getMethod()) ) {
+                } else if ("PUT".equals(request.method().toString())) {
 			retval = "Error parsing input data";
 			try {
 				jsonRequest = new IMSJSONRequest(request);
@@ -497,7 +514,7 @@ public class LTI2Servlet {
 				retval = "Error: "+ e.getMessage();
 			}
 		} else {
-			retval = "Unsupported operation:" + request.getMethod();
+                    retval = "Unsupported operation:" + request.method();
 		}
 
             response.status(BAD_REQUEST);
@@ -564,7 +581,7 @@ System.out.println("accept="+acceptHdr+" ac="+acceptComplex);
 		JSONObject proxy_settings = LTI2Util.parseSettings(PERSIST.get(LTI2Util.SCOPE_ToolProxy));
 
 		// For a GET request we depend on LTI2Util to do the GET logic
-		if ( "GET".equals(request.getMethod()) ) {
+		if ("GET".equals(request.method().toString())) {
 			Object obj = LTI2Util.getSettings(request, scope,
 				link_settings, binding_settings, proxy_settings,
 				link_url, binding_url, proxy_url);
@@ -583,7 +600,7 @@ System.out.println("accept="+acceptHdr+" ac="+acceptComplex);
 
 			JSONObject jsonResponse = (JSONObject) obj;
                     response.status(OK);
-                    response.setMessage(jsonResponse.toString() + "\n");
+                    response.content(jsonResponse.toString() + "\n");
                     System.out.println("jsonResponse=" + jsonResponse);
                     return;
                 } else if ("PUT".equals(request.method().toString())) {
@@ -610,7 +627,7 @@ System.out.println("settings="+settings);
                     response.status(OK);
 		} else {
                     response.status(BAD_REQUEST);
-			doErrorJSON(request,response, jsonRequest, "Method not handled="+request.getMethod(), null);
+                    doErrorJSON(request, response, jsonRequest, "Method not handled=" + request.method(), null);
 		}
 	}
 
@@ -624,7 +641,8 @@ System.out.println("settings="+settings);
 		}
         M_log.info(message);
 		String output = IMSJSONRequest.doErrorJSON(request, response, json, message, e);
-System.out.println(output);
+            System.out.println(output);
+            response.content(output + "\n");
     }
 
 	public void destroy() {

@@ -18,18 +18,23 @@
  */
 package org.imsglobal.lti;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.google.common.net.MediaType;
 import com.mastfrog.acteur.HttpEvent;
-import static com.mastfrog.acteur.headers.Headers.X_FORWARDED_PROTO;
+import static com.mastfrog.acteur.headers.Headers.CONTENT_TYPE;
 import com.mastfrog.acteur.headers.Method;
 import com.mastfrog.acteur.server.PathFactory;
 import com.mastfrog.acteur.util.HttpMethod;
-import com.mastfrog.url.URL;
 import static com.mastfrog.util.Checks.notNull;
 import com.mastfrog.util.Exceptions;
 import com.mastfrog.util.Strings;
+import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.HttpHeaderNames;
-import static io.netty.handler.codec.http.HttpHeaders.Names.HOST;
+import io.netty.handler.codec.http.QueryStringDecoder;
+import static io.netty.util.CharsetUtil.UTF_8;
 import java.io.ByteArrayInputStream;
 import static org.imsglobal.lti.BasicLTIConstants.CUSTOM_PREFIX;
 import static org.imsglobal.lti.BasicLTIConstants.EXTENSION_PREFIX;
@@ -47,6 +52,7 @@ import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URISyntaxException;
 import java.net.URLDecoder;
+import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -164,25 +170,60 @@ public class BasicLTIUtil {
     }
 
     private static Map<String, String> parameters(HttpEvent evt) {
-        Map<String, String> m = new HashMap<>(evt.urlParametersAsMap());
-        String header = evt.header(HttpHeaderNames.AUTHORIZATION);
-        if (header != null) {
-            try {
-                header = URLDecoder.decode(header, "UTF-8");
-            } catch (UnsupportedEncodingException ex) {
-                return Exceptions.chuck(ex);
-            }
-            if (header.toLowerCase().startsWith("oauth ")) {
-                header = header.substring(6);
-            }
-            for (CharSequence sq : Strings.splitUniqueNoEmpty(',', header)) {
-                CharSequence[] kv = splitOnce('=', sq);
-                if (kv.length == 2) {
-                    m.put(kv[0].toString(), stripQuotes(kv[1]).toString());
+        try {
+            Map<String, String> m = new HashMap<>(evt.urlParametersAsMap());
+            String header = evt.header(HttpHeaderNames.AUTHORIZATION);
+            if (header != null) {
+                try {
+                    header = URLDecoder.decode(header, "UTF-8");
+                } catch (UnsupportedEncodingException ex) {
+                    return Exceptions.chuck(ex);
+                }
+                if (header.toLowerCase().startsWith("oauth ")) {
+                    header = header.substring(6);
+                }
+                for (CharSequence sq : Strings.splitUniqueNoEmpty(',', header)) {
+                    CharSequence[] kv = splitOnce('=', sq);
+                    if (kv.length == 2) {
+                        m.put(kv[0].toString(), stripQuotes(kv[1]).toString());
+                    }
                 }
             }
+            if (evt.method() == Method.PUT || evt.method() == Method.POST) {
+                ByteBuf content = evt.content();
+                content.resetReaderIndex();
+                System.out.println("DECODE FROM " + (content == null ? "null" : "" + content.readableBytes())
+                        + " BYTES POSTED " + evt.header(CONTENT_TYPE));
+                if (content != null && content.readableBytes() > 0) {
+                    MediaType mt = evt.header(CONTENT_TYPE);
+                    Charset cs = UTF_8;
+                    if (mt != null && mt.charset().isPresent()) {
+                        cs = mt.charset().get();
+                    }
+                    if (mt == null || !mt.is(MediaType.JSON_UTF_8.withoutParameters())) {
+                        CharSequence val = content.getCharSequence(0, content.readableBytes(), cs);
+                        QueryStringDecoder decoder = new QueryStringDecoder(val.toString(), cs, false);
+                        for (Entry<String, List<String>> e : decoder.parameters().entrySet()) {
+                            String v = e.getValue().isEmpty() ? null : e.getValue().get(0);
+                            if (v != null) {
+                                System.out.println("PP: " + e.getKey() + " = " + v);
+                                m.put(e.getKey(), v);
+                            }
+                        }
+                    } else if (mt != null && mt.is(MediaType.JSON_UTF_8.withoutParameters())) {
+                        Map<String, String> m2 = new ObjectMapper().readValue(new ByteBufInputStream(content),
+                                new TypeReference<Map<String, String>>() {
+                        });
+                        m.putAll(m2);
+                    }
+                }
+            }
+            System.out.println("PARAMETERS IN MESSAGE: " + new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT)
+                    .writeValueAsString(m));
+            return m;
+        } catch (IOException ex) {
+            return Exceptions.chuck(ex);
         }
-        return m;
     }
 
     public static OAuthMessage getMessage(HttpEvent request, String URL) {
@@ -213,29 +254,8 @@ public class BasicLTIUtil {
     }
 
     public static String getRequestURL(HttpEvent evt, PathFactory paths) {
-        String uri = evt.request().uri();
-        if (uri.startsWith("http://") || uri.startsWith("https://")) {
-            return uri;
-        }
-        CharSequence proto = evt.header(X_FORWARDED_PROTO);
-        URL u1 = null;
-        if (proto == null) {
-            u1 = paths.constructURL("/");
-            proto = u1.getProtocol().toString();
-        }
-        CharSequence host = evt.header(HOST);
-        if (host == null) {
-            if (u1 == null) {
-                u1 = paths.constructURL("/");
-            }
-            host = paths.constructURL("/").getHost().toString();
-            if (!u1.getPort().equals(u1.getProtocol().getDefaultPort())) {
-                host = host + ":" + u1.getPort().intValue();
-            }
-        }
-        return proto + "://" + host + "/" + evt.request().uri();
+        return evt.getRequestURL(true);
     }
-
 
     public static LtiVerificationResult validateMessage(HttpEvent request, String URL, String oauth_secret) {
         OAuthMessage oam = getMessage(request, URL);
@@ -261,6 +281,7 @@ public class BasicLTIUtil {
         try {
             oav.validateMessage(oam, acc);
         } catch (Exception e) {
+            e.printStackTrace();
             if (base_string != null) {
                 return new LtiVerificationResult(false, LtiError.BAD_REQUEST, "Failed to validate: " + e.getLocalizedMessage() + "\nBase String\n" + base_string);
             } else {
@@ -526,7 +547,7 @@ public class BasicLTIUtil {
         OAuthAccessor acc = new OAuthAccessor(cons);
         try {
             oam.addRequiredParameters(acc);
-            // System.out.println("Base Message String\n"+OAuthSignatureMethod.getBaseString(oam)+"\n");
+            System.out.println("OUTBOUND Base Message String\n" + OAuthSignatureMethod.getBaseString(oam) + "\n");
 
             List<Map.Entry<String, String>> params = oam.getParameters();
 

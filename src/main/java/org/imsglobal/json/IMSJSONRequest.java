@@ -248,7 +248,7 @@ public class IMSJSONRequest {
 			}
 		}
             String jsonText = JSONValue.toJSONString(jsonResponse);
-            response.setMessage(jsonText + "\n");
+            response.content(jsonText + "\n");
             return jsonText;
 	}
 

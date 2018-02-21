@@ -28,7 +28,7 @@ import java.util.*;
 import org.apache.http.Header;
 
 /**
- * @author Paul Gray
+ * @author Tim Boudreau
  */
 public class BaseMockHttpServletRequest implements HttpEvent {
 
@@ -194,5 +194,10 @@ public class BaseMockHttpServletRequest implements HttpEvent {
     @Override
     public ByteBuf content() throws IOException {
         return Unpooled.EMPTY_BUFFER;
+    }
+
+    @Override
+    public String getRequestURL(boolean preferHeaders) {
+        return req.getRequestLine().getUri();
     }
 }

@@ -13,7 +13,6 @@ public class MockHttpGet extends BaseMockHttpServletRequest {
 
     public MockHttpGet(HttpGet req) throws Exception {
         super(req);
-        System.out.println("MOCK GET WITH " + req.getURI());
         this.get = req;
     }
 

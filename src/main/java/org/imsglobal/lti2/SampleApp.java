@@ -46,7 +46,7 @@ public class SampleApp extends Application { //using the old api so we don't pol
         add(SamplePage.class);
     }
 
-    @PathRegex({"^sample\\/.*$", "^sample\\/?$"})
+    @PathRegex({"^lti\\/sample\\/.*$", "^lti\\/sample\\/?$"})
     @Methods({GET, PUT, POST})
     static final class SamplePage extends Page {
 
