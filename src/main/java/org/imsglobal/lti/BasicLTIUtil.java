@@ -169,7 +169,8 @@ public class BasicLTIUtil {
         return cs;
     }
 
-    private static Map<String, String> parameters(HttpEvent evt) {
+    public static Map<String, String> parameters(HttpEvent evt) {
+        boolean debug = Boolean.getBoolean("lti.debug");
         try {
             Map<String, String> m = new HashMap<>(evt.urlParametersAsMap());
             String header = evt.header(HttpHeaderNames.AUTHORIZATION);
@@ -192,9 +193,11 @@ public class BasicLTIUtil {
             if (evt.method() == Method.PUT || evt.method() == Method.POST) {
                 ByteBuf content = evt.content();
                 content.resetReaderIndex();
-                System.out.println("DECODE FROM " + (content == null ? "null" : "" + content.readableBytes())
-                        + " BYTES POSTED " + evt.header(CONTENT_TYPE));
-                if (content != null && content.readableBytes() > 0) {
+                if (debug) {
+                    System.out.println("DECODE FROM " + (content == null ? "null" : "" + content.readableBytes())
+                            + " BYTES POSTED " + evt.header(CONTENT_TYPE));
+                }
+                if (content.readableBytes() > 0) {
                     MediaType mt = evt.header(CONTENT_TYPE);
                     Charset cs = UTF_8;
                     if (mt != null && mt.charset().isPresent()) {
@@ -206,11 +209,13 @@ public class BasicLTIUtil {
                         for (Entry<String, List<String>> e : decoder.parameters().entrySet()) {
                             String v = e.getValue().isEmpty() ? null : e.getValue().get(0);
                             if (v != null) {
-                                System.out.println("PP: " + e.getKey() + " = " + v);
+                                if (debug) {
+                                    System.out.println("PP: " + e.getKey() + " = " + v);
+                                }
                                 m.put(e.getKey(), v);
                             }
                         }
-                    } else if (mt != null && mt.is(MediaType.JSON_UTF_8.withoutParameters())) {
+                    } else if (mt.is(MediaType.JSON_UTF_8.withoutParameters())) {
                         Map<String, String> m2 = new ObjectMapper().readValue(new ByteBufInputStream(content),
                                 new TypeReference<Map<String, String>>() {
                         });
@@ -218,8 +223,10 @@ public class BasicLTIUtil {
                     }
                 }
             }
-            System.out.println("PARAMETERS IN MESSAGE: " + new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT)
-                    .writeValueAsString(m));
+            if (debug) {
+                System.out.println("PARAMETERS IN MESSAGE: " + new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT)
+                        .writeValueAsString(m));
+            }
             return m;
         } catch (IOException ex) {
             return Exceptions.chuck(ex);
